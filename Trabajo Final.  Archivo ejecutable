@@ -1,0 +1,57 @@
+library(shiny)
+
+# Define la UI
+ui <- fluidPage(
+  titlePanel("Análisis de Base de Datos"),
+  sidebarLayout(
+    sidebarPanel(
+      fileInput("file", "Cargar archivo de datos"),
+      actionButton("procesar", "Procesar datos")
+    ),
+    mainPanel(
+      textOutput("info_general"),
+      textOutput("info_faltantes"),
+      textOutput("info_completos"),
+      textOutput("info_resultante")
+    )
+  )
+)
+
+# Define el servidor
+server <- function(input, output) {
+  datos <- reactive({
+    req(input$file)
+    read.table(input$file$datapath, header = TRUE)
+  })
+  
+  output$info_general <- renderText({
+    num_registros <- nrow(datos())
+    num_variables <- ncol(datos())
+    paste("Número de registros:", num_registros, "\n",
+          "Número de variables:", num_variables)
+  })
+  
+  output$info_faltantes <- renderText({
+    req(input$file)
+    registros_con_faltantes <- sum(rowSums(is.na(datos())) > 0)
+    paste("Registros con al menos un dato faltante:", registros_con_faltantes)
+  })
+  
+  output$info_completos <- renderText({
+    req(input$file)
+    registros_completos <- sum(rowSums(is.na(datos())) == 0)
+    paste("Registros con información completa:", registros_completos)
+  })
+  
+  output$info_resultante <- renderText({
+    req(input$file)
+    datos_sin_faltantes <- datos()[complete.cases(datos()), ]
+    dimension_base_resultante <- dim(datos_sin_faltantes)
+    paste("Dimensión de la base de datos resultante:",
+          dimension_base_resultante[1], "registros y",
+          dimension_base_resultante[2], "variables")
+  })
+}
+
+# Ejecutar la aplicación
+shinyApp(ui, server)
