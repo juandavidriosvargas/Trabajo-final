@@ -1,57 +1,91 @@
 library(shiny)
+library(DT)
 
-# Define la UI
+# Define UI for application
 ui <- fluidPage(
-  titlePanel("Análisis de Base de Datos"),
-  sidebarLayout(
-    sidebarPanel(
-      fileInput("file", "Cargar archivo de datos"),
-      actionButton("procesar", "Procesar datos")
+    titlePanel("Análisis de Datos"),
+    
+    sidebarLayout(
+        sidebarPanel(
+            fileInput("file", "Seleccione el archivo de datos (txt)"),
+            tags$hr(),
+            helpText("Recuerda que los datos perdidos o faltantes se indican con un punto (.) en el conjunto de datos.")
+        ),
+        
+        mainPanel(
+            tabsetPanel(
+                tabPanel("Resumen", 
+                         h4("Resumen de Datos"),
+                         verbatimTextOutput("summary")),
+                
+                tabPanel("Resultados", 
+                         h4("Resultados"),
+                         verbatimTextOutput("results")),
+                
+                tabPanel("Tabla Original", 
+                         DTOutput("original_table")),
+                
+                tabPanel("Tabla sin Faltantes", 
+                         DTOutput("clean_table"))
+            )
+        )
     ),
-    mainPanel(
-      textOutput("info_general"),
-      textOutput("info_faltantes"),
-      textOutput("info_completos"),
-      textOutput("info_resultante")
+    
+    # Estilos CSS personalizados
+    tags$head(
+        tags$style(HTML("
+      body {
+        font-family: Arial, sans-serif;
+        background-color: #f3f3f3;
+      }
+      .tab-content {
+        padding: 20px;
+      }
+    "))
     )
-  )
 )
 
-# Define el servidor
+# Define server logic
 server <- function(input, output) {
-  datos <- reactive({
-    req(input$file)
-    read.table(input$file$datapath, header = TRUE)
-  })
-  
-  output$info_general <- renderText({
-    num_registros <- nrow(datos())
-    num_variables <- ncol(datos())
-    paste("Número de registros:", num_registros, "\n",
-          "Número de variables:", num_variables)
-  })
-  
-  output$info_faltantes <- renderText({
-    req(input$file)
-    registros_con_faltantes <- sum(rowSums(is.na(datos())) > 0)
-    paste("Registros con al menos un dato faltante:", registros_con_faltantes)
-  })
-  
-  output$info_completos <- renderText({
-    req(input$file)
-    registros_completos <- sum(rowSums(is.na(datos())) == 0)
-    paste("Registros con información completa:", registros_completos)
-  })
-  
-  output$info_resultante <- renderText({
-    req(input$file)
-    datos_sin_faltantes <- datos()[complete.cases(datos()), ]
-    dimension_base_resultante <- dim(datos_sin_faltantes)
-    paste("Dimensión de la base de datos resultante:",
-          dimension_base_resultante[1], "registros y",
-          dimension_base_resultante[2], "variables")
-  })
+    
+    # Cargar y analizar los datos al seleccionar un archivo
+    data <- reactive({
+        req(input$file)
+        inFile <- input$file
+        if (is.null(inFile))
+            return(NULL)
+        read.table(inFile$datapath, header = TRUE, sep = ",")
+    })
+    
+    # Resumen de los datos
+    output$summary <- renderPrint({
+        data <- data()
+        cat("Número de registros en la base de datos:", nrow(data), "\n")
+        cat("Número de variables en la base de datos:", ncol(data), "\n")
+        registros_completos <- sum(rowSums(is.na(data) | data == ".") == 0)
+        cat("Dimensión de la base resultante (sin datos faltantes):", registros_completos, "registros,", ncol(data), "variables\n")
+    })
+    
+    # Remover registros con datos faltantes y mostrar la dimensión resultante
+    output$results <- renderPrint({
+        data <- data()
+        registros_completos <- sum(rowSums(is.na(data) | data == ".") == 0)
+        cat("Dimensión de la base resultante (sin datos faltantes):", registros_completos, "registros,", ncol(data), "variables\n")
+    })
+    
+    # Mostrar la tabla de datos original
+    output$original_table <- renderDT({
+        data <- data()
+        datatable(data)
+    })
+    
+    # Mostrar la tabla de datos sin faltantes
+    output$clean_table <- renderDT({
+        data <- data()
+        data_sin_faltantes <- na.omit(data)
+        datatable(data_sin_faltantes)
+    })
 }
 
-# Ejecutar la aplicación
-shinyApp(ui, server)
+# Run the application 
+shinyApp(ui = ui, server = server)
