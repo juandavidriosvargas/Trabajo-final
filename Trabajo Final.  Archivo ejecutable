@@ -90,3 +90,108 @@ server <- function(input, output) {
 
 # Run the application 
 shinyApp(ui = ui, server = server)
+
+
+#######################################################################################################################################################################################
+library(shiny)
+library(DT)
+library(ggplot2)
+
+# Define UI for application
+ui <- fluidPage(
+  titlePanel("Análisis de Datos"),
+  
+  sidebarLayout(
+    sidebarPanel(
+      fileInput("file", "Seleccione el archivo de datos (txt)"),
+      tags$hr(),
+      helpText("Recuerda que los datos perdidos o faltantes se indican con un punto (.) en el conjunto de datos.")
+    ),
+    
+    mainPanel(
+      tabsetPanel(
+        tabPanel("Resumen", 
+                 h4("Resumen de Datos"),
+                 verbatimTextOutput("summary")),
+        
+        tabPanel("Pregunta 1", 
+                 h4("Pregunta 1"),
+                 verbatimTextOutput("question1")),
+        
+        tabPanel("Pregunta 2", 
+                 h4("Pregunta 2"),
+                 selectInput("twin", "Seleccione el gemelo:", choices = c("Gemelo 1", "Gemelo 2")),
+                 plotOutput("salary_plot")),
+        
+        tabPanel("Tabla sin Faltantes", 
+                 DTOutput("clean_table"))
+      )
+    )
+  ),
+  
+  # Estilos CSS personalizados
+  tags$head(
+    tags$style(HTML("
+      body {
+        font-family: Arial, sans-serif;
+        background-color: #f3f3f3;
+      }
+      .tab-content {
+        padding: 20px;
+      }
+    "))
+  )
+)
+
+# Define server logic
+server <- function(input, output) {
+  
+  # Cargar y analizar los datos al seleccionar un archivo
+  data <- reactive({
+    req(input$file)
+    inFile <- input$file
+    if (is.null(inFile))
+      return(NULL)
+    read.table(inFile$datapath, header = TRUE, sep = ",")
+  })
+  
+  # Resumen de los datos
+  output$summary <- renderPrint({
+    data <- data()
+    cat("Número de registros en la base de datos:", nrow(data), "\n")
+    cat("Número de variables en la base de datos:", ncol(data), "\n")
+  })
+  
+  # Pregunta 1
+  output$question1 <- renderPrint({
+    data <- data()
+    registros_con_faltantes <- sum(rowSums(is.na(data) | data == ".") > 0)
+    registros_completos <- sum(rowSums(is.na(data) | data == ".") == 0)
+    cat("1a: Registros con al menos un dato faltante:", registros_con_faltantes, "\n")
+    cat("1b: Registros con información completa (sin faltantes):", registros_completos, "\n")
+    cat("2: Dimensión de la base resultante (# Registros completos y # de variables):", registros_completos, "registros,", ncol(data), "variables\n")
+  })
+  
+  # Pregunta 2: Gráfico de salario por hora para cada gemelo
+  output$salary_plot <- renderPlot({
+    data <- data()
+    gemelo <- switch(input$twin, "Gemelo 1" = "HRWAGEH", "Gemelo 2" = "HRWAGEL")
+    ggplot(data, aes_string(x = gemelo)) +
+      geom_bar(fill = "#86C7F3") +
+      labs(title = "Salario por Hora Autoreportado",
+           x = "Salario por Hora",
+           y = "Frecuencia") +
+      theme_minimal() +
+      theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+  })
+  
+  # Mostrar la tabla de datos sin faltantes
+  output$clean_table <- renderDT({
+    data <- data()
+    data_sin_faltantes <- data[rowSums(is.na(data) | data == ".") == 0, ]
+    datatable(data_sin_faltantes, options = list(lengthMenu = c(10, 25, 50, -1), scrollY = '400px', scrollCollapse = TRUE))
+  })
+}
+
+# Run the application 
+shinyApp(ui = ui, server = server)
