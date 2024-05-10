@@ -195,3 +195,174 @@ server <- function(input, output) {
 
 # Run the application 
 shinyApp(ui = ui, server = server)
+#####################################################################################################################################
+
+library(shiny)
+library(DT)
+library(ggplot2)
+
+# Define UI for application
+ui <- fluidPage(
+  titlePanel("Trabajo Final"),
+  
+  sidebarLayout(
+    sidebarPanel(
+      fileInput("file", "Seleccione el archivo de datos (txt)"),
+      tags$hr(),
+      helpText("Los datos perdidos o faltantes se indican con un punto (.) en el conjunto de datos.")
+    ),
+    
+    mainPanel(
+      tabsetPanel(
+        tabPanel("Resumen", 
+                 h4("Resumen de la Base de Datos"),
+                 verbatimTextOutput("summary")),
+        
+        tabPanel("Pregunta 1", 
+                 h4("Pregunta 1"),
+                 verbatimTextOutput("question1")),
+        
+        tabPanel("Pregunta 2", 
+                 h4("Pregunta 2"),
+                 selectInput("twin", "Seleccione el gemelo:", choices = c("Gemelo 1", "Gemelo 2")),
+                 plotOutput("salary_plot")),
+        
+        tabPanel("Tabla sin Resgitros Faltantes", 
+                 DTOutput("clean_table")),
+        
+        tabPanel("Pregunta 3a",
+                 h4("Pregunta 3a"),
+                 DTOutput("summary_stats")),
+        
+        tabPanel("Pregunta 3b",
+                 h4("Pregunta 3b"),
+                 verbatimTextOutput("summary_stats_numeric"))
+      )
+    )
+  ),
+  
+  # Estilos CSS personalizados
+  tags$head(
+    tags$style(HTML("
+      body {
+        font-family: Arial, sans-serif;
+        background-color: #f3f3f3;
+      }
+      .tab-content {
+        padding: 20px;
+      }
+    "))
+  )
+)
+
+# Define server logic
+server <- function(input, output) {
+  
+  # Cargar y analizar los datos al seleccionar un archivo
+  data <- reactive({
+    req(input$file)
+    inFile <- input$file
+    if (is.null(inFile))
+      return(NULL)
+    read.table(inFile$datapath, header = TRUE, sep = ",")
+  })
+  
+  # Resumen de los datos
+  output$summary <- renderPrint({
+    data <- data()
+    cat("Número de registros en la base de datos:", nrow(data), "\n")
+    cat("Número de variables en la base de datos:", ncol(data), "\n")
+  })
+  
+  # Pregunta 1
+  output$question1 <- renderPrint({
+    data <- data()
+    registros_con_faltantes <- sum(rowSums(is.na(data) | data == ".") > 0)
+    registros_completos <- sum(rowSums(is.na(data) | data == ".") == 0)
+    cat("1a: Registros con al menos un dato faltante:", registros_con_faltantes, "\n")
+    cat("1b: Registros con información completa (sin faltantes):", registros_completos, "\n")
+    cat("2: Dimensión de la base resultante (# Registros completos y # de variables):", registros_completos, "registros,", ncol(data), "variables\n")
+  })
+  
+  # Pregunta 2: Gráfico de salario por hora para cada gemelo
+  output$salary_plot <- renderPlot({
+    data <- data()
+    gemelo <- switch(input$twin, "Gemelo 1" = "HRWAGEH", "Gemelo 2" = "HRWAGEL")
+    ggplot(data, aes_string(x = gemelo)) +
+      geom_bar(fill = "#86C7F3") +
+      labs(title = "Salario por Hora Autoreportado",
+           x = "Salario por Hora",
+           y = "Frecuencia") +
+      theme_minimal() +
+      theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+  })
+  
+# Pregunta 3a: Estadísticos Resumen
+output$summary_stats <- renderDT({
+  data <- data()
+  gemelo1 <- sapply(data[data$HRWAGEH != ".", "HRWAGEH"], as.numeric)
+  gemelo2 <- sapply(data[data$HRWAGEL != ".", "HRWAGEL"], as.numeric)
+  
+  center <- c("Media", "Mediana", "Moda")
+  center_g1 <- c(mean(gemelo1, na.rm = TRUE), median(gemelo1, na.rm = TRUE), as.numeric(names(sort(-table(gemelo1))[1])))
+  center_g2 <- c(mean(gemelo2, na.rm = TRUE), median(gemelo2, na.rm = TRUE), as.numeric(names(sort(-table(gemelo2))[1])))
+  
+  dispersion <- c("Rango", "Varianza", "Desv. Est", "CV")
+  dispersion_g1 <- c(max(gemelo1, na.rm = TRUE) - min(gemelo1, na.rm = TRUE),
+                     var(gemelo1, na.rm = TRUE),
+                     sd(gemelo1, na.rm = TRUE),
+                     sd(gemelo1, na.rm = TRUE) / mean(gemelo1, na.rm = TRUE))
+  dispersion_g2 <- c(max(gemelo2, na.rm = TRUE) - min(gemelo2, na.rm = TRUE),
+                     var(gemelo2, na.rm = TRUE),
+                     sd(gemelo2, na.rm = TRUE),
+                     sd(gemelo2, na.rm = TRUE) / mean(gemelo2, na.rm = TRUE))
+  
+  location <- c("Q1", "Q2", "Q3", "Min", "Max")
+  location_g1 <- quantile(gemelo1, c(0.25, 0.5, 0.75), na.rm = TRUE)
+  location_g2 <- quantile(gemelo2, c(0.25, 0.5, 0.75), na.rm = TRUE)
+  
+  # Ajustar la longitud de los vectores
+  max_length <- max(length(center_g1), length(center_g2), 
+                    length(dispersion_g1), length(dispersion_g2), 
+                    length(location_g1), length(location_g2))
+  
+  center_g1 <- c(center_g1, rep(NA, max_length - length(center_g1)))
+  center_g2 <- c(center_g2, rep(NA, max_length - length(center_g2)))
+  dispersion_g1 <- c(dispersion_g1, rep(NA, max_length - length(dispersion_g1)))
+  dispersion_g2 <- c(dispersion_g2, rep(NA, max_length - length(dispersion_g2)))
+  location_g1 <- c(location_g1, rep(NA, max_length - length(location_g1)))
+  location_g2 <- c(location_g2, rep(NA, max_length - length(location_g2)))
+  
+  data_frame <- data.frame(Estadístico = rep(c(center, dispersion, location), each = 2),
+                           Gemelo = rep(c("Gemelo 1", "Gemelo 2"), times = length(center) + length(dispersion) + length(location)),
+                           Valor = c(center_g1, center_g2, dispersion_g1, dispersion_g2, location_g1, location_g2))
+  
+  datatable(data_frame, options = list(lengthMenu = c(10, 25, 50, -1), scrollY = '400px', scrollCollapse = TRUE))
+})
+
+
+  
+  # Pregunta 3b: Resumen numérico del salario por hora para cada gemelo
+  output$summary_stats_numeric <- renderPrint({
+    data <- data()
+    gemelo1 <- data[data$HRWAGEH != ".", "HRWAGEH"]
+    gemelo2 <- data[data$HRWAGEL != ".", "HRWAGEL"]
+    
+    cat("Resumen numérico del salario por hora para el gemelo 1:\n")
+    print(summary(as.numeric(gemelo1)))
+    cat("\nResumen numérico del salario por hora para el gemelo 2:\n")
+    print(summary(as.numeric(gemelo2)))
+  })
+  
+  # Mostrar la tabla de datos sin faltantes
+  output$clean_table <- renderDT({
+    data <- data()
+    data_sin_faltantes <- data[rowSums(is.na(data) | data == ".") == 0, ]
+    datatable(data_sin_faltantes, options = list(lengthMenu = c(10, 25, 50, -1), scrollY = '400px', scrollCollapse = TRUE))
+  })
+}
+
+# Run the application 
+shinyApp(ui = ui, server = server)
+
+
